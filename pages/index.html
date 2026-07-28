@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tic Tac Toe vs RL Agent</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh; background: #f5f0e8; color: #222;
+  }
+  .container { text-align: center; }
+  h1 { font-size: 1.6rem; margin-bottom: 0.3rem; color: #222; }
+  .subtitle { font-size: 0.85rem; color: #888; margin-bottom: 1.5rem; }
+  #status { font-size: 1.1rem; min-height: 1.6rem; margin-bottom: 1rem; color: #333; }
+  .board {
+    display: grid; grid-template-columns: repeat(3, 100px); grid-template-rows: repeat(3, 100px);
+    gap: 4px; margin: 0 auto 1.5rem; background: #222;
+  }
+  .cell {
+    background: #f5f0e8; border: none;
+    font-size: 2.4rem; font-weight: 700; color: #222;
+    cursor: pointer;
+  }
+  .cell:hover:not(:disabled) { background: #ebe5d9; }
+  .cell:disabled { cursor: default; }
+  .cell.player { color: #b04030; }
+  .cell.ai { color: #222; }
+  .cell.win { background: #333; color: #f5f0e8; }
+  .cell.win.player { background: #b04030; color: #f5f0e8; }
+  button.new-game {
+    padding: 0.6rem 1.8rem; font-size: 1rem; font-weight: 600;
+    background: #222; color: #f5f0e8; border: none;
+    cursor: pointer;
+  }
+  button.new-game:hover { background: #444; }
+  .score {
+    display: flex; justify-content: center; gap: 2rem;
+    margin-bottom: 1.2rem; font-size: 0.95rem;
+  }
+  .score span { color: #888; }
+  .score .val { color: #222; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Tic Tac Toe</h1>
+  <p class="subtitle">vs Q-Learning Agent (trained on 2.5M games)</p>
+  <div class="score">
+    <span>You: <span class="val" id="pWins">0</span></span>
+    <span>AI: <span class="val" id="aWins">0</span></span>
+    <span>Draws: <span class="val" id="draws">0</span></span>
+  </div>
+  <div id="status">Loading AI...</div>
+  <div class="board" id="board"></div>
+  <button class="new-game" id="newGame">New Game</button>
+</div>
+<script>
+const WIN_LINES = [
+  [0,1,2],[3,4,5],[6,7,8],
+  [0,3,6],[1,4,7],[2,5,8],
+  [0,4,8],[2,4,6]
+];
+
+let qTable = {};
+let board, currentPlayer, gameOver, playerMark, aiMark;
+let score = { player: 0, ai: 0, draw: 0 };
+
+const boardEl = document.getElementById('board');
+const statusEl = document.getElementById('status');
+const cells = [];
+
+for (let i = 0; i < 9; i++) {
+  const btn = document.createElement('button');
+  btn.className = 'cell';
+  btn.addEventListener('click', () => playerMove(i));
+  boardEl.appendChild(btn);
+  cells.push(btn);
+}
+
+document.getElementById('newGame').addEventListener('click', newGame);
+
+fetch('q_table.json')
+  .then(r => r.json())
+  .then(data => { qTable = data; newGame(); })
+  .catch(() => { statusEl.textContent = 'Failed to load AI data.'; });
+
+function stateKey(b) {
+  return b.join(',');
+}
+
+function getQ(b, action) {
+  const key = stateKey(b) + '|' + action;
+  return qTable[key] || 0;
+}
+
+function validMoves(b) {
+  return b.reduce((acc, v, i) => v === 0 ? [...acc, i] : acc, []);
+}
+
+function checkWinner(b, p) {
+  return WIN_LINES.find(line => line.every(i => b[i] === p)) || null;
+}
+
+function isDraw(b) {
+  return b.every(v => v !== 0);
+}
+
+function render() {
+  board.forEach((v, i) => {
+    const c = cells[i];
+    c.textContent = v === 1 ? 'X' : v === -1 ? 'O' : '';
+    const role = v === playerMark ? ' player' : v === aiMark ? ' ai' : '';
+    c.className = 'cell' + role;
+    c.disabled = gameOver || v !== 0;
+  });
+  document.getElementById('pWins').textContent = score.player;
+  document.getElementById('aWins').textContent = score.ai;
+  document.getElementById('draws').textContent = score.draw;
+}
+
+function highlightWin(line, mark) {
+  line.forEach(i => {
+    cells[i].classList.add('win');
+    if (mark === playerMark) cells[i].classList.add('player');
+  });
+}
+
+function endGame(result, winLine) {
+  gameOver = true;
+  if (result === 'player') {
+    score.player++;
+    statusEl.textContent = 'You win!';
+    highlightWin(winLine, playerMark);
+  } else if (result === 'ai') {
+    score.ai++;
+    statusEl.textContent = 'AI wins!';
+    highlightWin(winLine, aiMark);
+  } else {
+    score.draw++;
+    statusEl.textContent = "It's a draw!";
+  }
+  render();
+}
+
+function aiMove() {
+  const moves = validMoves(board);
+  if (!moves.length) return;
+
+  let bestMove = moves[0], bestQ = -Infinity;
+  for (const m of moves) {
+    const q = getQ(board, m);
+    if (q > bestQ) { bestQ = q; bestMove = m; }
+  }
+
+  board[bestMove] = aiMark;
+  currentPlayer = playerMark;
+  render();
+
+  const winLine = checkWinner(board, aiMark);
+  if (winLine) { endGame('ai', winLine); return; }
+  if (isDraw(board)) { endGame('draw'); return; }
+
+  statusEl.textContent = 'Your turn';
+}
+
+function playerMove(i) {
+  if (gameOver || board[i] !== 0 || currentPlayer !== playerMark) return;
+  board[i] = playerMark;
+  currentPlayer = aiMark;
+  render();
+
+  const winLine = checkWinner(board, playerMark);
+  if (winLine) { endGame('player', winLine); return; }
+  if (isDraw(board)) { endGame('draw'); return; }
+
+  statusEl.textContent = 'AI is thinking...';
+  setTimeout(aiMove, 350);
+}
+
+function newGame() {
+  board = Array(9).fill(0);
+  gameOver = false;
+  currentPlayer = 1;
+
+  const playerFirst = Math.random() < 0.5;
+  playerMark = playerFirst ? 1 : -1;
+  aiMark = playerFirst ? -1 : 1;
+
+  render();
+
+  if (playerFirst) {
+    statusEl.textContent = 'Your turn (you are X)';
+  } else {
+    statusEl.textContent = 'AI goes first (you are O)';
+    setTimeout(aiMove, 500);
+  }
+}
+</script>
+</body>
+</html>
