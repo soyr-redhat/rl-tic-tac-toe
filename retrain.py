@@ -1,8 +1,10 @@
 import numpy as np
 from train import TicTacToe, QLearningAgent, RandomAgent
 
+EPISODES = 100_000_000
+EVAL_INTERVAL = 1000
 
-def train_selfplay(episodes=10_000_000):
+def train_selfplay(episodes=EPISODES):
     game = TicTacToe()
     agent1 = QLearningAgent(learning_rate=0.1, discount_factor=0.99, epsilon=0.15)
     agent2 = QLearningAgent(learning_rate=0.1, discount_factor=0.99, epsilon=0.15)
@@ -44,7 +46,7 @@ def train_selfplay(episodes=10_000_000):
     return merged
 
 
-def evaluate(agent, episodes=1000):
+def evaluate(agent, episodes=EVAL_INTERVAL):
     game = TicTacToe()
     opponent = RandomAgent()
     wins = losses = draws = 0
@@ -70,8 +72,8 @@ def evaluate(agent, episodes=1000):
 
 
 if __name__ == "__main__":
-    print("Training with 10M episodes of pure self-play...\n")
-    agent = train_selfplay(10_000_000)
+    print(f"Training with {EPISODES} episodes of pure self-play...\n")
+    agent = train_selfplay(100_000_000)
     print(f"\nQ-table size: {len(agent.q_table):,} entries")
     evaluate(agent)
     agent.save("best_agent.pkl")
